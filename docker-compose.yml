@@ -1,0 +1,116 @@
+version: '3.9'
+
+networks:
+  my-network:
+    driver: bridge
+
+services:
+  haproxy:
+    build:
+      context: ./haproxy
+    ports:
+      - "80:80"       # Frontend port
+      - "8404:8404"   # Stats endpoint
+      - "8405:8405"   # Prometheus metrics
+    volumes:
+      - ./haproxy/log/haproxy.log:/var/log/haproxy.log:rw
+    networks:
+      - my-network
+    container_name: haproxy
+    depends_on:
+      - backend-app1
+      - backend-app2
+      - backend-app3
+      - backend-app4
+  
+  prometheus:
+    build: 
+      context: ./prometheus
+    networks:
+      - my-network
+    ports:
+      - "9090:9090"
+    container_name: prometheus
+
+  loki:
+    build: 
+      context: ./loki
+    networks:
+      - my-network
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./loki/loki-data:/loki
+      - /var/run/docker.sock:/var/run/docker.sock # Scrape Docker logs
+    ports:
+      - "3100:3100"
+    command: ["-config.file=/etc/loki/loki-config.yml", "-config.expand-env=true", "-log.level=debug"]
+    container_name: loki
+    depends_on:
+      - prometheus
+
+  promtail:
+    build:
+      context: ./promtail
+    networks:
+      - my-network
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    container_name: promtail
+
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - my-network
+    ports:
+      - "3000:3000"
+    container_name: grafana
+    depends_on:
+      - prometheus
+      - loki
+  
+  # The following are the backend services
+  backend-app1:
+    build:
+      context: ./test-app
+    ports:
+      - "2222:9999"
+    environment:
+      - APPID=2222
+    container_name: backend-app1
+    networks:
+      - my-network
+
+  backend-app2:
+    build:
+      context: ./test-app
+    ports:
+      - "3333:9999"
+    environment:
+      - APPID=3333
+    container_name: backend-app2
+    networks:
+      - my-network
+
+  backend-app3:
+    build:
+      context: ./test-app
+    ports:
+      - "4444:9999"
+    environment:
+      - APPID=4444
+    container_name: backend-app3
+    networks:
+      - my-network
+
+  backend-app4:
+    build:
+      context: ./test-app
+    ports:
+      - "5555:9999"
+    environment:
+      - APPID=5555
+    container_name: backend-app4
+    networks:
+      - my-network
+
